@@ -66,7 +66,7 @@ func LoadIndex(reader IndexReader, key []byte, cfg *Config) (*Index, error) {
 	if err != nil {
 		return nil, err
 	}
-	decrypted, err := decrypt(data, key)
+	decrypted, err := aesDecrypt(data, key)
 	if err != nil {
 		return nil, err
 	}
@@ -128,7 +128,7 @@ func (ix *Index) Save(writer IndexWriter, key []byte) error {
 	if err != nil {
 		return err
 	}
-	data, err := encrypt(jsonBytes, key)
+	data, err := aesEncrypt(jsonBytes, key)
 	if err != nil {
 		return err
 	}

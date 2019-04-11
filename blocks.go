@@ -30,7 +30,7 @@ func (b *Block) Update(startByte int, newBytes []byte) (int, error) {
 		return 0, errors.New("start position is outside block")
 	}
 	for i := 0; i < len(newBytes); i++ {
-		if i >= len(b.Bytes) {
+		if startByte+i >= len(b.Bytes) {
 			return i, nil
 		}
 
@@ -49,7 +49,7 @@ func ReadBlock(blockName string, key []byte, reader BlockReader) (*Block, error)
 	if err != nil {
 		return nil, err
 	}
-	block, err := decrypt(raw, key)
+	block, err := aesDecrypt(raw, key)
 	if err != nil {
 		return nil, err
 	}
@@ -57,7 +57,7 @@ func ReadBlock(blockName string, key []byte, reader BlockReader) (*Block, error)
 }
 
 func WriteBlock(block *Block, key []byte, writer BlockWriter) error {
-	encrypted, err := encrypt(block.Bytes, key)
+	encrypted, err := aesEncrypt(block.Bytes, key)
 	if err != nil {
 		return err
 	}
@@ -65,6 +65,7 @@ func WriteBlock(block *Block, key []byte, writer BlockWriter) error {
 }
 
 func getNextBlockName(currentBlock string) string {
+	// TODO: make this slightly more deterministic based on previous block name
 	b := make([]byte, 32)
 	rand.Read(b)
 	return fmt.Sprintf("%x", b)

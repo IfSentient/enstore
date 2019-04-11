@@ -29,9 +29,9 @@ func main() {
 		}
 	} else {
 		// Look in default config file location, "config.json"
-		if _, err := os.Stat(CONFIGFILE_PATH); !os.IsNotExist(err) {
+		if _, err := os.Stat(ConfigfilePath); !os.IsNotExist(err) {
 			var err error
-			cfg, err = LoadConfig(CONFIGFILE_PATH)
+			cfg, err = LoadConfig(ConfigfilePath)
 			if err != nil {
 				panic(err)
 			}
