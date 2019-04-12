@@ -1,4 +1,4 @@
-package main
+package connectors
 
 import (
 	"io/ioutil"

@@ -7,6 +7,8 @@ import (
 	"io/ioutil"
 	"os"
 	"sort"
+
+	"github.com/IfSentient/enstore/connectors"
 )
 
 func main() {
@@ -62,7 +64,7 @@ func main() {
 	key := hasher.Sum(nil)
 
 	// File I/O
-	blockInterfacer := LocalFileReadWriter{}
+	blockInterfacer := connectors.LocalFileReadWriter{}
 
 	// Index
 	index, err := LoadIndex(&blockInterfacer, key, cfg)
