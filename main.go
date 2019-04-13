@@ -11,6 +11,11 @@ import (
 	"github.com/IfSentient/enstore/connectors"
 )
 
+type AllReadWriter interface {
+	IndexReader
+	IndexWriter
+}
+
 func main() {
 	keyArg := flag.String("key", "", "key")
 	keyFileArg := flag.String("keyfile", "", "key file")
@@ -18,6 +23,7 @@ func main() {
 	getFileArg := flag.String("get-file", "", "filename to retrieve")
 	delFileArg := flag.String("delete-file", "", "filemame to delete")
 	configFileArg := flag.String("config", "", "config file path")
+	s3ConfigFileArg := flag.String("s3-config", "", "s3 config file path")
 	outputArg := flag.String("o", "", "output file")
 
 	flag.Parse()
@@ -38,6 +44,20 @@ func main() {
 				panic(err)
 			}
 		}
+	}
+
+	var connector AllReadWriter
+	if *s3ConfigFileArg != "" {
+		s3cfg, err := connectors.LoadS3Config(*s3ConfigFileArg)
+		if err != nil {
+			panic(err)
+		}
+		connector, err = connectors.NewS3Connector(*s3cfg)
+		if err != nil {
+			panic(err)
+		}
+	} else {
+		connector = &connectors.LocalFileReadWriter{}
 	}
 
 	var initialKey []byte
@@ -64,10 +84,10 @@ func main() {
 	key := hasher.Sum(nil)
 
 	// File I/O
-	blockInterfacer := connectors.LocalFileReadWriter{}
+	//blockInterfacer := connectors.LocalFileReadWriter{}
 
 	// Index
-	index, err := LoadIndex(&blockInterfacer, key, cfg)
+	index, err := LoadIndex(connector, key, cfg)
 	if err != nil {
 		panic(err)
 	}
@@ -78,14 +98,14 @@ func main() {
 			panic(err)
 		}
 
-		err = index.AddFile(&File{*addFileArg, bytes}, &blockInterfacer, &blockInterfacer, key)
+		err = index.AddFile(&File{*addFileArg, bytes}, connector, connector, key)
 		if err != nil {
 			panic(err)
 		}
 	}
 
 	if *getFileArg != "" {
-		file, err := index.GetFile(*getFileArg, &blockInterfacer, key)
+		file, err := index.GetFile(*getFileArg, connector, key)
 		if err != nil {
 			panic(err)
 		}
@@ -97,7 +117,7 @@ func main() {
 	}
 
 	if *delFileArg != "" {
-		err := index.DeleteFile(*delFileArg, &blockInterfacer, &blockInterfacer, key, true)
+		err := index.DeleteFile(*delFileArg, connector, connector, key, true)
 		if err != nil {
 			panic(err)
 		}
@@ -112,7 +132,7 @@ func main() {
 		fmt.Println("\t" + file.Filename)
 	}
 
-	err = index.Save(&blockInterfacer, key)
+	err = index.Save(connector, key)
 	if err != nil {
 		panic(err)
 	}

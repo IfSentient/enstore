@@ -2,6 +2,10 @@ package connectors
 
 import (
 	"bytes"
+	"encoding/json"
+	"io/ioutil"
+
+	"github.com/aws/aws-sdk-go/aws/credentials"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
@@ -14,15 +18,57 @@ type S3Connector struct {
 	bucket  string
 }
 
-// NewS3Connector returns a pointer to a new S3Connector that uses the profile in .aws/credentials
-func NewS3Connector(bucketname string) (*S3Connector, error) {
-	sess, err := session.NewSession()
+type S3Config struct {
+	Region      string
+	Endpoint    string
+	Bucket      string
+	Credentials *S3Credentials
+}
+
+type S3Credentials struct {
+	ID     string
+	Secret string
+	Token  string
+}
+
+func LoadS3Config(path string) (*S3Config, error) {
+	var cfg S3Config
+	bytes, err := ioutil.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	err = json.Unmarshal(bytes, &cfg)
+	if err != nil {
+		return nil, err
+	}
+	return &cfg, nil
+}
+
+// NewS3Connector returns a pointer to a new S3Connector
+func NewS3Connector(cfg S3Config) (*S3Connector, error) {
+	var sess *session.Session
+	var err error
+	if cfg.Endpoint == "" && cfg.Region == "" && cfg.Credentials == nil {
+		sess, err = session.NewSession()
+	} else {
+		config := &aws.Config{}
+		if cfg.Region != "" {
+			config.Region = aws.String(cfg.Region)
+		}
+		if cfg.Endpoint != "" {
+			config.Endpoint = aws.String(cfg.Endpoint)
+		}
+		if cfg.Credentials != nil {
+			config.Credentials = credentials.NewStaticCredentials(cfg.Credentials.ID, cfg.Credentials.Secret, cfg.Credentials.Token)
+		}
+		sess, err = session.NewSession(config)
+	}
 	if err != nil {
 		return nil, err
 	}
 	return &S3Connector{
 		session: sess,
-		bucket:  bucketname,
+		bucket:  cfg.Bucket,
 	}, nil
 }
 
