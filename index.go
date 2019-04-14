@@ -3,6 +3,8 @@ package main
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
+	"io"
 	"sort"
 )
 
@@ -18,9 +20,10 @@ type IndexWriter interface {
 }
 
 // File contains a file's name and contents
-type File struct {
-	Filename string
-	Contents []byte
+type File interface {
+	io.Reader
+	Name() string
+	Size() int64
 }
 
 // FileMetadata contains file metadata in the Index
@@ -145,32 +148,28 @@ func (ix *Index) ListFiles() []FileMetadata {
 }
 
 // GetFile will read all blocks a file in the index is stored on, and assemble and return the unencrypted file
-func (ix *Index) GetFile(filename string, reader BlockReader, key []byte) (*File, error) {
+func (ix *Index) GetFile(filename string, destination io.Writer, reader BlockReader, key []byte) error {
 	fileMeta, ok := ix.fileMap[filename]
 	if !ok {
-		return nil, errors.New("file does not exist in the index")
+		return errors.New("file does not exist in the index")
 	}
 
-	bytes := make([]byte, 0)
 	for _, loc := range fileMeta.Blocks {
 		block, err := ReadBlock(loc.Block, key, reader)
 		if err != nil {
-			return nil, err
+			return err
 		}
-		bytes = append(bytes, block.Bytes[loc.StartByte:loc.EndByte]...)
+		destination.Write(block.Bytes[loc.StartByte:loc.EndByte])
 	}
 
-	return &File{
-		Filename: fileMeta.Filename,
-		Contents: bytes,
-	}, nil
+	return nil
 }
 
 // AddFile will add a file to the index and write it to any blocks with space, creating new blocks as necessary
-func (ix *Index) AddFile(file *File, reader BlockReader, writer BlockWriter, key []byte) error {
+func (ix *Index) AddFile(file File, reader BlockReader, writer BlockWriter, key []byte) error {
 	blockLocations := make([]BlockLocation, 0)
 	newBlocks := make(map[string]bool, 0)
-	fileSize := int64(len(file.Contents))
+	fileSize := file.Size()
 	remainingSize := fileSize
 
 	// Iterate through the blocks looking for open chunks
@@ -198,7 +197,6 @@ func (ix *Index) AddFile(file *File, reader BlockReader, writer BlockWriter, key
 		}
 	}
 
-	cursor := 0
 	for _, loc := range blockLocations {
 		var block *Block
 		var err error
@@ -211,7 +209,15 @@ func (ix *Index) AddFile(file *File, reader BlockReader, writer BlockWriter, key
 			return err
 		}
 
-		written, err := block.Update(int(loc.StartByte), file.Contents[cursor:cursor+int(loc.EndByte-loc.StartByte)])
+		buf := make([]byte, loc.EndByte-loc.StartByte)
+		n, err := file.Read(buf)
+		if err != nil {
+			return err
+		}
+		if n != len(buf) {
+			return fmt.Errorf("expected to read %d bytes from file, only read %d bytes", len(buf), n)
+		}
+		_, err = block.Update(int(loc.StartByte), buf)
 		if err != nil {
 			return err
 		}
@@ -220,13 +226,11 @@ func (ix *Index) AddFile(file *File, reader BlockReader, writer BlockWriter, key
 		if err != nil {
 			return err
 		}
-
-		cursor += written
 	}
 
 	ix.files = append(ix.files, FileMetadata{
-		Filename: file.Filename,
-		Size:     int64(len(file.Contents)),
+		Filename: file.Name(),
+		Size:     file.Size(),
 		Blocks:   blockLocations,
 	})
 
