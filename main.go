@@ -1,13 +1,33 @@
 package main
 
 import (
+	"bytes"
 	"crypto/md5"
 	"flag"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"os"
 	"sort"
 )
+
+type fileWrapper struct {
+	file io.Reader
+	size int64
+	name string
+}
+
+func (f *fileWrapper) Read(b []byte) (int, error) {
+	return f.file.Read(b)
+}
+
+func (f *fileWrapper) Size() int64 {
+	return f.size
+}
+
+func (f *fileWrapper) Name() string {
+	return f.name
+}
 
 func main() {
 	keyArg := flag.String("key", "", "key")
@@ -71,27 +91,48 @@ func main() {
 	}
 
 	if *addFileArg != "" {
-		bytes, err := ioutil.ReadFile(*addFileArg)
+		finfo, err := os.Stat(*addFileArg)
+		if err != nil {
+			panic(err)
+		}
+		file, err := os.OpenFile(*addFileArg, os.O_RDONLY, 0644)
+		if err != nil {
+			panic(err)
+		}
+		defer file.Close()
+
+		err = index.AddFile(&fileWrapper{file, finfo.Size(), *addFileArg}, &blockInterfacer, &blockInterfacer, key)
 		if err != nil {
 			panic(err)
 		}
 
-		err = index.AddFile(&File{*addFileArg, bytes}, &blockInterfacer, &blockInterfacer, key)
+		err = index.Save(&blockInterfacer, key)
 		if err != nil {
 			panic(err)
 		}
+		return
 	}
 
 	if *getFileArg != "" {
-		file, err := index.GetFile(*getFileArg, &blockInterfacer, key)
+		var writer io.Writer
+		if *outputArg != "" {
+			file, err := os.OpenFile(*outputArg, os.O_WRONLY|os.O_CREATE, 0644)
+			if err != nil {
+				panic(err)
+			}
+			defer file.Close()
+			writer = file
+		} else {
+			buffer := &bytes.Buffer{}
+			defer fmt.Println(buffer.Bytes())
+			writer = buffer
+		}
+
+		err := index.GetFile(*getFileArg, writer, &blockInterfacer, key)
 		if err != nil {
 			panic(err)
 		}
-		if *outputArg != "" {
-			err = ioutil.WriteFile(*outputArg, file.Contents, 0644)
-		} else {
-			fmt.Println(string(file.Contents))
-		}
+		return
 	}
 
 	if *delFileArg != "" {
@@ -99,6 +140,11 @@ func main() {
 		if err != nil {
 			panic(err)
 		}
+		err = index.Save(&blockInterfacer, key)
+		if err != nil {
+			panic(err)
+		}
+		return
 	}
 
 	fmt.Println("Files:")
@@ -108,11 +154,6 @@ func main() {
 	})
 	for _, file := range files {
 		fmt.Println("\t" + file.Filename)
-	}
-
-	err = index.Save(&blockInterfacer, key)
-	if err != nil {
-		panic(err)
 	}
 
 }
