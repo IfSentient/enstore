@@ -1,10 +1,5 @@
 package enstore
 
-import (
-	"encoding/json"
-	"io/ioutil"
-)
-
 const (
 	// ConfigfilePath is the default config file path
 	ConfigfilePath string = "config.json"
@@ -21,7 +16,6 @@ type Config struct {
 	BlockSize int
 	ChunkSize int
 	IndexFile string
-	KeyFile   string
 }
 
 // NewDefaultConfig returns a pointer to a new Config with default values
@@ -30,20 +24,5 @@ func NewDefaultConfig() *Config {
 		BlockSize: DefaultBlockSize,
 		ChunkSize: DefaultChunkSize,
 		IndexFile: DefaultIndexfile,
-		KeyFile:   "",
 	}
-}
-
-// LoadConfig attempts to load a JSON file at a path into a new default Config
-func LoadConfig(path string) (*Config, error) {
-	cfg := NewDefaultConfig()
-	bytes, err := ioutil.ReadFile(path)
-	if err != nil {
-		return nil, err
-	}
-	err = json.Unmarshal(bytes, cfg)
-	if err != nil {
-		return nil, err
-	}
-	return cfg, nil
 }

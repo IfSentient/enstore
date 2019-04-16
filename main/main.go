@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"crypto/md5"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
@@ -42,10 +43,11 @@ func main() {
 
 	flag.Parse()
 
-	cfg := enstore.NewDefaultConfig()
+	var cfg *enstore.Config
+	var keyFile string
 	if *configFileArg != "" {
 		var err error
-		cfg, err = enstore.LoadConfig(*configFileArg)
+		cfg, keyFile, err = loadConfig(*configFileArg)
 		if err != nil {
 			panic(err)
 		}
@@ -53,25 +55,23 @@ func main() {
 		// Look in default config file location, "config.json"
 		if _, err := os.Stat(enstore.ConfigfilePath); !os.IsNotExist(err) {
 			var err error
-			cfg, err = enstore.LoadConfig(enstore.ConfigfilePath)
+			cfg, keyFile, err = loadConfig(enstore.ConfigfilePath)
 			if err != nil {
 				panic(err)
 			}
 		}
 	}
 
-	var initialKey []byte
 	if *keyFileArg != "" {
-		var err error
-		initialKey, err = ioutil.ReadFile(*keyFileArg)
-		if err != nil {
-			panic(err)
-		}
-	} else if *keyArg != "" {
+		keyFile = *keyFileArg
+	}
+
+	var initialKey []byte
+	if *keyArg != "" {
 		initialKey = []byte(*keyArg)
-	} else if cfg.KeyFile != "" {
+	} else if keyFile != "" {
 		var err error
-		initialKey, err = ioutil.ReadFile(cfg.KeyFile)
+		initialKey, err = ioutil.ReadFile(keyFile)
 		if err != nil {
 			panic(err)
 		}
@@ -158,4 +158,28 @@ func main() {
 		fmt.Println("\t" + file.Filename)
 	}
 
+}
+
+type cliConfig struct {
+	KeyFile string
+}
+
+// LoadConfig attempts to load a JSON file at a path into a new default Config
+func loadConfig(path string) (*enstore.Config, string, error) {
+	cfg := enstore.NewDefaultConfig()
+	bytes, err := ioutil.ReadFile(path)
+	if err != nil {
+		return nil, "", err
+	}
+	err = json.Unmarshal(bytes, cfg)
+	if err != nil {
+		return nil, "", err
+	}
+	ccfg := &cliConfig{}
+	err = json.Unmarshal(bytes, ccfg)
+	if err != nil {
+		return nil, "", err
+	}
+
+	return cfg, ccfg.KeyFile, nil
 }
