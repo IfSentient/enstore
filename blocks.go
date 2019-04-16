@@ -1,4 +1,4 @@
-package main
+package enstore
 
 import (
 	"crypto/rand"

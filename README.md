@@ -10,6 +10,7 @@ TODO
 ### CLI
 The CLI can be compiled from source using
 ```bash
+$ cd main
 $ go build -o enstore
 ```
 go must be installed to build. Pre-built binaries may be forthcoming.
