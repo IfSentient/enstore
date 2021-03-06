@@ -26,6 +26,12 @@ type File interface {
 	Size() int64
 }
 
+// Crypter allows for encryption and decryption of bytes
+type Crypter interface {
+	Encrypt([]byte) ([]byte, error)
+	Decrypt([]byte) ([]byte, error)
+}
+
 // FileMetadata contains file metadata in the Index
 type FileMetadata struct {
 	Filename string
@@ -59,7 +65,7 @@ type Index struct {
 
 // LoadIndex will attempt to load an existing index file and decrypt its store. If no file exists,
 // it will create a new one with the supplied key.
-func LoadIndex(reader IndexReader, key []byte, cfg *Config) (*Index, error) {
+func LoadIndex(reader IndexReader, crypter Crypter, cfg *Config) (*Index, error) {
 	if !reader.Exists(cfg.IndexFile) {
 		return NewIndex(cfg), nil
 	}
@@ -69,7 +75,7 @@ func LoadIndex(reader IndexReader, key []byte, cfg *Config) (*Index, error) {
 	if err != nil {
 		return nil, err
 	}
-	decrypted, err := aesDecrypt(data, key)
+	decrypted, err := crypter.Decrypt(data)
 	if err != nil {
 		return nil, err
 	}
@@ -120,7 +126,7 @@ func NewIndex(cfg *Config) *Index {
 }
 
 // Save will save the index encrypted with the supplied key, using the IndexWriter to write the file
-func (ix *Index) Save(writer IndexWriter, key []byte) error {
+func (ix *Index) Save(writer IndexWriter, crypter Crypter) error {
 	jsonIndex := indexJson{
 		Files:      ix.files,
 		Blocks:     ix.blocks,
@@ -131,7 +137,7 @@ func (ix *Index) Save(writer IndexWriter, key []byte) error {
 	if err != nil {
 		return err
 	}
-	data, err := aesEncrypt(jsonBytes, key)
+	data, err := crypter.Encrypt(jsonBytes)
 	if err != nil {
 		return err
 	}
@@ -148,14 +154,14 @@ func (ix *Index) ListFiles() []FileMetadata {
 }
 
 // GetFile will read all blocks a file in the index is stored on, and assemble and return the unencrypted file
-func (ix *Index) GetFile(filename string, destination io.Writer, reader BlockReader, key []byte) error {
+func (ix *Index) GetFile(filename string, destination io.Writer, reader BlockReader, crypter Crypter) error {
 	fileMeta, ok := ix.fileMap[filename]
 	if !ok {
 		return errors.New("file does not exist in the index")
 	}
 
 	for _, loc := range fileMeta.Blocks {
-		block, err := ReadBlock(loc.Block, key, reader)
+		block, err := ReadBlock(loc.Block, crypter, reader)
 		if err != nil {
 			return err
 		}
@@ -166,7 +172,7 @@ func (ix *Index) GetFile(filename string, destination io.Writer, reader BlockRea
 }
 
 // AddFile will add a file to the index and write it to any blocks with space, creating new blocks as necessary
-func (ix *Index) AddFile(file File, reader BlockReader, writer BlockWriter, key []byte) error {
+func (ix *Index) AddFile(file File, reader BlockReader, writer BlockWriter, crypter Crypter) error {
 	blockLocations := make([]BlockLocation, 0)
 	newBlocks := make(map[string]bool, 0)
 	fileSize := file.Size()
@@ -203,7 +209,7 @@ func (ix *Index) AddFile(file File, reader BlockReader, writer BlockWriter, key 
 		if newBlocks[loc.Block] {
 			block, err = NewBlock(loc.Block, ix.blocks[loc.Block].Size)
 		} else {
-			block, err = ReadBlock(loc.Block, key, reader)
+			block, err = ReadBlock(loc.Block, crypter, reader)
 		}
 		if err != nil {
 			return err
@@ -222,7 +228,7 @@ func (ix *Index) AddFile(file File, reader BlockReader, writer BlockWriter, key 
 			return err
 		}
 
-		err = WriteBlock(block, key, writer)
+		err = WriteBlock(block, crypter, writer)
 		if err != nil {
 			return err
 		}
@@ -322,7 +328,7 @@ func (ix *Index) findSpaceInBlock(block *BlockMetadata, space int) ([]BlockLocat
 	return blockLocations, space - int(remainingSize)
 }
 
-func (ix *Index) DeleteFile(filename string, reader BlockReader, writer BlockWriter, key []byte, zeroOut bool) error {
+func (ix *Index) DeleteFile(filename string, reader BlockReader, writer BlockWriter, crypter Crypter, zeroOut bool) error {
 	fileMeta, ok := ix.fileMap[filename]
 	if !ok {
 		return errors.New("file does not exist in the index")
@@ -331,7 +337,7 @@ func (ix *Index) DeleteFile(filename string, reader BlockReader, writer BlockWri
 	var block *Block
 	var err error
 	if zeroOut {
-		block, err = ReadBlock(fileMeta.Blocks[0].Block, key, reader)
+		block, err = ReadBlock(fileMeta.Blocks[0].Block, crypter, reader)
 		if err != nil {
 			return err
 		}
@@ -339,11 +345,11 @@ func (ix *Index) DeleteFile(filename string, reader BlockReader, writer BlockWri
 	for _, allocation := range fileMeta.Blocks {
 		if zeroOut {
 			if block.Filename != allocation.Block {
-				err = WriteBlock(block, key, writer)
+				err = WriteBlock(block, crypter, writer)
 				if err != nil {
 					return err
 				}
-				block, err = ReadBlock(allocation.Block, key, reader)
+				block, err = ReadBlock(allocation.Block, crypter, reader)
 				if err != nil {
 					return err
 				}
@@ -362,7 +368,7 @@ func (ix *Index) DeleteFile(filename string, reader BlockReader, writer BlockWri
 		}
 	}
 	if zeroOut {
-		err = WriteBlock(block, key, writer)
+		err = WriteBlock(block, crypter, writer)
 		if err != nil {
 			return err
 		}

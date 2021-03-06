@@ -30,6 +30,25 @@ func (bw *mockBlockWriter) Write(blockname string, bytes []byte) error {
 	return nil
 }
 
+type mockCrypter struct {
+	EncryptFunc func([]byte) ([]byte, error)
+	DecryptFunc func([]byte) ([]byte, error)
+}
+
+func (c *mockCrypter) Encrypt(p []byte) ([]byte, error) {
+	if c.EncryptFunc != nil {
+		return c.EncryptFunc(p)
+	}
+	return nil, nil
+}
+
+func (c *mockCrypter) Decrypt(p []byte) ([]byte, error) {
+	if c.DecryptFunc != nil {
+		return c.DecryptFunc(p)
+	}
+	return nil, nil
+}
+
 func TestBlockUpdate(t *testing.T) {
 	tests := []struct {
 		testname             string
@@ -59,16 +78,17 @@ func TestReadBlock(t *testing.T) {
 	blockNameReadError := "badReadBlock"
 	readError := errors.New("I AM ERROR")
 
+	// TODO: improve this test
 	tests := []struct {
 		testname      string
 		blockname     string
-		key           []byte
+		cryptError    error
 		expectedBlock *Block
 		expectedError error
 	}{
-		{"Read error", blockNameReadError, good16ByteKey, nil, readError},
-		{"Decrypt error", "b10ck4", []byte{1, 2, 3}, nil, aes.KeySizeError(3)},
-		{"Success", "b10ck4", good16ByteKey, &Block{Filename: "b10ck4", Bytes: []byte("b10ck4")}, nil},
+		{"Read error", blockNameReadError, nil, nil, readError},
+		{"Decrypt error", "b10ck4", aes.KeySizeError(3), nil, aes.KeySizeError(3)},
+		{"Success", "b10ck4", nil, &Block{Filename: "b10ck4", Bytes: []byte("b10ck4")}, nil},
 	}
 
 	reader := mockBlockReader{
@@ -76,17 +96,20 @@ func TestReadBlock(t *testing.T) {
 			if block == blockNameReadError {
 				return nil, readError
 			}
-			bytes, err := aesEncrypt([]byte(block), good16ByteKey)
-			if err != nil {
-				return []byte{}, nil
-			}
-			return bytes, nil
+			return []byte(block), nil
 		},
 	}
 
 	for _, test := range tests {
 		t.Run(test.testname, func(t *testing.T) {
-			block, err := ReadBlock(test.blockname, test.key, &reader)
+			block, err := ReadBlock(test.blockname, &mockCrypter{
+				DecryptFunc: func(p []byte) ([]byte, error) {
+					if test.cryptError != nil {
+						return nil, test.cryptError
+					}
+					return []byte(test.blockname), nil
+				},
+			}, &reader)
 			assert.Equal(t, test.expectedError, err)
 			if test.expectedBlock != nil {
 				assert.Equal(t, test.expectedBlock.Filename, block.Filename)
@@ -100,16 +123,17 @@ func TestWriteBlock(t *testing.T) {
 	blockNameWriteError := "badWriteBlock"
 	writeError := errors.New("I AM ERROR")
 
+	// TODO: improve this test
 	tests := []struct {
 		testname      string
 		blockname     string
 		bytes         []byte
-		key           []byte
+		cryptError    error
 		expectedError error
 	}{
-		{"Bad key size", blockNameWriteError, []byte{1, 2, 3}, []byte{1, 2, 3}, aes.KeySizeError(3)},
-		{"Write error", blockNameWriteError, []byte{1, 2, 3}, good16ByteKey, writeError},
-		{"Success", "b10ck4", []byte{1, 2, 3}, good16ByteKey, nil},
+		{"Bad key size", blockNameWriteError, []byte{1, 2, 3}, aes.KeySizeError(3), aes.KeySizeError(3)},
+		{"Write error", blockNameWriteError, []byte{1, 2, 3}, nil, writeError},
+		{"Success", "b10ck4", []byte{1, 2, 3}, nil, nil},
 	}
 
 	var bytesWritten []byte
@@ -125,10 +149,17 @@ func TestWriteBlock(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.testname, func(t *testing.T) {
-			err := WriteBlock(&Block{Filename: test.blockname, Bytes: test.bytes}, test.key, &writer)
+			err := WriteBlock(&Block{Filename: test.blockname, Bytes: test.bytes}, &mockCrypter{
+				EncryptFunc: func(p []byte) ([]byte, error) {
+					if test.cryptError != nil {
+						return nil, test.cryptError
+					}
+					return p, nil
+				},
+			}, &writer)
 			assert.Equal(t, test.expectedError, err)
 			if test.expectedError == nil {
-				assert.Equal(t, aes.BlockSize+len(test.bytes), len(bytesWritten))
+				assert.Equal(t, test.bytes, bytesWritten)
 			}
 		})
 	}

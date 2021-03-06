@@ -45,9 +45,10 @@ func main() {
 
 	var cfg *enstore.Config
 	var keyFile string
+	var storeDir string
 	if *configFileArg != "" {
 		var err error
-		cfg, keyFile, err = loadConfig(*configFileArg)
+		cfg, keyFile, storeDir, err = loadConfig(*configFileArg)
 		if err != nil {
 			panic(err)
 		}
@@ -55,7 +56,7 @@ func main() {
 		// Look in default config file location, "config.json"
 		if _, err := os.Stat(enstore.ConfigfilePath); !os.IsNotExist(err) {
 			var err error
-			cfg, keyFile, err = loadConfig(enstore.ConfigfilePath)
+			cfg, keyFile, storeDir, err = loadConfig(enstore.ConfigfilePath)
 			if err != nil {
 				panic(err)
 			}
@@ -83,11 +84,19 @@ func main() {
 	hasher.Write([]byte(initialKey))
 	key := hasher.Sum(nil)
 
+	// Make the AES crypter from the key
+	crypter, err := enstore.NewAESCrypter(key)
+	if err != nil {
+		panic(err)
+	}
+
 	// File I/O
-	blockInterfacer := enstore.LocalFileReadWriter{}
+	blockInterfacer := enstore.LocalFileReadWriter{
+		BasePath: storeDir,
+	}
 
 	// Index
-	index, err := enstore.LoadIndex(&blockInterfacer, key, cfg)
+	index, err := enstore.LoadIndex(&blockInterfacer, crypter, cfg)
 	if err != nil {
 		panic(err)
 	}
@@ -103,12 +112,12 @@ func main() {
 		}
 		defer file.Close()
 
-		err = index.AddFile(&fileWrapper{file, finfo.Size(), *addFileArg}, &blockInterfacer, &blockInterfacer, key)
+		err = index.AddFile(&fileWrapper{file, finfo.Size(), *addFileArg}, &blockInterfacer, &blockInterfacer, crypter)
 		if err != nil {
 			panic(err)
 		}
 
-		err = index.Save(&blockInterfacer, key)
+		err = index.Save(&blockInterfacer, crypter)
 		if err != nil {
 			panic(err)
 		}
@@ -130,7 +139,7 @@ func main() {
 			writer = buffer
 		}
 
-		err := index.GetFile(*getFileArg, writer, &blockInterfacer, key)
+		err := index.GetFile(*getFileArg, writer, &blockInterfacer, crypter)
 		if err != nil {
 			panic(err)
 		}
@@ -138,11 +147,11 @@ func main() {
 	}
 
 	if *delFileArg != "" {
-		err := index.DeleteFile(*delFileArg, &blockInterfacer, &blockInterfacer, key, true)
+		err := index.DeleteFile(*delFileArg, &blockInterfacer, &blockInterfacer, crypter, true)
 		if err != nil {
 			panic(err)
 		}
-		err = index.Save(&blockInterfacer, key)
+		err = index.Save(&blockInterfacer, crypter)
 		if err != nil {
 			panic(err)
 		}
@@ -161,25 +170,26 @@ func main() {
 }
 
 type cliConfig struct {
-	KeyFile string
+	KeyFile  string
+	StoreDir string
 }
 
 // LoadConfig attempts to load a JSON file at a path into a new default Config
-func loadConfig(path string) (*enstore.Config, string, error) {
+func loadConfig(path string) (*enstore.Config, string, string, error) {
 	cfg := enstore.NewDefaultConfig()
 	bytes, err := ioutil.ReadFile(path)
 	if err != nil {
-		return nil, "", err
+		return nil, "", "", err
 	}
 	err = json.Unmarshal(bytes, cfg)
 	if err != nil {
-		return nil, "", err
+		return nil, "", "", err
 	}
 	ccfg := &cliConfig{}
 	err = json.Unmarshal(bytes, ccfg)
 	if err != nil {
-		return nil, "", err
+		return nil, "", "", err
 	}
 
-	return cfg, ccfg.KeyFile, nil
+	return cfg, ccfg.KeyFile, ccfg.StoreDir, nil
 }
