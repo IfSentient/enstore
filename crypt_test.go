@@ -1,7 +1,9 @@
 package enstore
 
 import (
+	"bytes"
 	"crypto/aes"
+	"io/ioutil"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -90,4 +92,21 @@ func TestAesDecrypt(t *testing.T) {
 			assert.Equal(t, test.expectedError, err)
 		})
 	}
+}
+
+func TestReaders(t *testing.T) {
+	// This just tests that if we pass a encrypter as the source to a decrypter, when we read we get back the original source contents
+	c, _ := NewAESCrypter(good32ByteKey)
+	content := []byte("I AM CONTENT")
+	source := bytes.NewBuffer(content)
+
+	enc, err := c.Encrypter(source)
+	assert.Nil(t, err)
+	dec, err := c.Decrypter(enc)
+	assert.Nil(t, err)
+
+	res, err := ioutil.ReadAll(dec)
+	assert.Nil(t, err)
+
+	assert.Equal(t, content, res)
 }
