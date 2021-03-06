@@ -44,20 +44,20 @@ func NewBlock(blockName string, blockSize int64) (*Block, error) {
 	return &Block{blockName, bytes}, nil
 }
 
-func ReadBlock(blockName string, key []byte, reader BlockReader) (*Block, error) {
+func ReadBlock(blockName string, crypter Crypter, reader BlockReader) (*Block, error) {
 	raw, err := reader.Read(blockName)
 	if err != nil {
 		return nil, err
 	}
-	block, err := aesDecrypt(raw, key)
+	block, err := crypter.Decrypt(raw)
 	if err != nil {
 		return nil, err
 	}
 	return &Block{blockName, block}, nil
 }
 
-func WriteBlock(block *Block, key []byte, writer BlockWriter) error {
-	encrypted, err := aesEncrypt(block.Bytes, key)
+func WriteBlock(block *Block, crypter Crypter, writer BlockWriter) error {
+	encrypted, err := crypter.Encrypt(block.Bytes)
 	if err != nil {
 		return err
 	}
