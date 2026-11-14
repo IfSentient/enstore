@@ -41,9 +41,9 @@ func TestAesEncrypt(t *testing.T) {
 		key           []byte
 		expectedError error
 	}{
-		{"16-byte key", []byte{0}, good16ByteKey, nil},
-		{"24-byte key", []byte{0}, good24ByteKey, nil},
-		{"32-byte key", []byte{0}, good32ByteKey, nil},
+		{"16-byte key", make([]byte, 32), good16ByteKey, nil},
+		{"24-byte key", make([]byte, 32), good24ByteKey, nil},
+		{"32-byte key", make([]byte, 32), good32ByteKey, nil},
 	}
 
 	for _, test := range tests {
